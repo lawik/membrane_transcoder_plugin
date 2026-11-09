@@ -323,6 +323,29 @@ defmodule Membrane.Transcoder.IntegrationTest do
       do: {[stream_format: {:output, state.format}], state}
   end
 
+  test "rejects a :resolution pad option that is not positive and even" do
+    for resolution <- [
+          %{width: 641, height: 480},
+          %{width: 640, height: 0},
+          %{width: "640", height: 480},
+          %{width: 640}
+        ] do
+      {:ok, _supervisor, pipeline} = Testing.Pipeline.start([])
+      ref = Process.monitor(pipeline)
+
+      spec =
+        child(%FormatSource{format: %H264{alignment: :au, stream_structure: :annexb}})
+        |> child(:transcoder, Membrane.Transcoder)
+        |> via_out(Membrane.Pad.ref(:output, 0), options: [resolution: resolution])
+        |> child(:sink, Testing.Sink)
+
+      Testing.Pipeline.execute_actions(pipeline, spec: spec)
+
+      assert_receive {:DOWN, ^ref, :process, ^pipeline, reason}, 5_000
+      assert inspect(reason) =~ "Invalid :resolution pad option"
+    end
+  end
+
   test "if encoder and decoder are spawned or not, depending on the value of `transcoding_policy` option" do
     for format <- [
           %AAC{channels: 1, sample_rate: 44_100, profile: :LC},

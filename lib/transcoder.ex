@@ -295,6 +295,7 @@ defmodule Membrane.Transcoder do
   @impl true
   def handle_pad_added(Pad.ref(:output, pad_id) = pad_ref, ctx, %State{} = state) do
     pad_opts = ctx.pads[pad_ref].options
+    :ok = validate_resolution!(pad_opts.resolution)
 
     suffix = {pad_id, :output}
     connector_name = {:connector, suffix}
@@ -314,6 +315,23 @@ defmodule Membrane.Transcoder do
 
     {[spec: spec],
      %State{state | output_specs: Map.put(state.output_specs, pad_ref, output_spec)}}
+  end
+
+  # The scaler (and the encoders) require even dimensions; odd or non-positive values would
+  # otherwise reach the native code unchecked, so reject them when the pad is added.
+  @spec validate_resolution!(term()) :: :ok | no_return()
+  defp validate_resolution!(:keep), do: :ok
+
+  defp validate_resolution!(%{width: width, height: height})
+       when is_integer(width) and width > 0 and rem(width, 2) == 0 and
+              is_integer(height) and height > 0 and rem(height, 2) == 0,
+       do: :ok
+
+  defp validate_resolution!(resolution) do
+    raise ArgumentError, """
+    Invalid :resolution pad option: #{inspect(resolution)}. Expected :keep or a map \
+    %{width: width, height: height} where both dimensions are positive, even integers.
+    """
   end
 
   @impl true
